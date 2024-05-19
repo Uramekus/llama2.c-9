@@ -11,11 +11,14 @@
     #include "win.h"
 #else
     #include <unistd.h>
-    #include <sys/mman.h>
 #endif
+#define sqrtf sqrt
+#define expf exp
+
 // ----------------------------------------------------------------------------
 // Transformer and RunState structs, and related memory management
 
+#pragma pack on
 typedef struct {
     int dim; // transformer dimension
     int hidden_dim; // for ffn layers
@@ -451,25 +454,15 @@ void bpe_encode(char *text, char **vocab, float *vocab_scores, int vocab_size, u
     free(sorted_vocab);
 }
 
-// ----------------------------------------------------------------------------
-// utilities: time / rng
-
-long time_in_ms() {
-    // return time in milliseconds, for benchmarking the model speed
-    struct timespec time;
-    clock_gettime(CLOCK_REALTIME, &time);
-    return time.tv_sec * 1000 + time.tv_nsec / 1000000;
-}
-
 unsigned long long rng_seed;
-unsigned int random_u32() {
+unsigned int random_u32(void) {
     // xorshift rng: https://en.wikipedia.org/wiki/Xorshift#xorshift.2A
     rng_seed ^= rng_seed >> 12;
     rng_seed ^= rng_seed << 25;
     rng_seed ^= rng_seed >> 27;
     return (rng_seed * 0x2545F4914F6CDD1Dull) >> 32;
 }
-float random_f32() { // random float32 in [0,1)
+float random_f32(void) { // random float32 in [0,1)
     return (random_u32() >> 8) / 16777216.0f;
 }
 
@@ -556,7 +549,7 @@ int sample_topp(float* probabilities, int n, float topp, ProbIndex* probindex) {
 // ----------------------------------------------------------------------------
 // int main
 
-void error_usage() {
+void error_usage(void) {
     fprintf(stderr, "Usage:   run <checkpoint> [options]\n");
     fprintf(stderr, "Example: run model.bin -n 256 -i \"Once upon a time\"\n");
     fprintf(stderr, "Options:\n");
@@ -664,7 +657,6 @@ int main(int argc, char *argv[]) {
     }
 
     // start the main loop
-    long start = 0;  // used to time our code, only initialized after first iteration
     int next;        // will store the next token in the sequence
     int token = 1;   // init with token 1 (=BOS), as done in Llama-2 sentencepiece tokenizer
     int pos = 0;     // position in the sequence
@@ -720,17 +712,8 @@ int main(int argc, char *argv[]) {
         }
         fflush(stdout);
         token = next;
-
-        // init the timer here because the first iteration can be slower
-        if (start == 0) { start = time_in_ms(); }
     }
     printf("\n");
-
-    // report achieved tok/s (pos-1 because the timer starts after first iteration)
-    if (pos > 1) {
-        long end = time_in_ms();
-        fprintf(stderr, "achieved tok/s: %f\n", (pos-1) / (double)(end-start)*1000);
-    }
 
     // memory and file handles cleanup
     free_run_state(&state);
